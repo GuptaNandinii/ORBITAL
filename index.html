@@ -79,6 +79,17 @@
     <!-- High-height container just to scroll the animation -->
     <div class="animation-scroll-track"></div>
 
+    <!-- Loading Screen -->
+    <div class="site-loading-screen" id="site-loading-screen">
+        <div class="loading-content">
+            <h1 class="glitch-title loading-glitch" data-text="INITIALIZING">INITIALIZING</h1>
+            <div class="loading-bar-container">
+                <div class="loading-bar" id="site-loading-bar"></div>
+            </div>
+            <p class="loading-status" id="site-loading-status">ESTABLISHING UPLINK... <span id="site-loading-percentage">0%</span></p>
+        </div>
+    </div>
+
     <div class="content-container">
         <!-- Animated background grid for the content area -->
         <div class="cyber-grid"></div>
@@ -417,40 +428,52 @@
                     <span class="panel-status blink">SCANNING...</span>
                 </div>
                 <div id="satellite-link"></div>
-                <h2>Orbital Satellite Explorer</h2>
-                <p>Real-time database of active satellites and debris orbiting the Earth. Powered by TLE API.</p>
+                <h2>Satellite Explorer</h2>
+                <p>Fetch satellite orbital elements directly from CelesTrak on demand.</p>
 
-                <!-- Search Controls -->
-                <div class="neo-controls">
-                    <div class="neo-input-group" style="flex-grow: 1;">
-                        <label for="sat-search-input">SEARCH BY NAME:</label>
-                        <input type="text" id="sat-search-input" class="cyber-input"
-                            placeholder="e.g. ISS, STARLINK, HUBBLE">
+                <div class="neo-controls" style="align-items: flex-end;">
+                    <div class="neo-input-group" style="flex-grow: 1; min-width: 220px;">
+                        <label for="sat-category-select">SATELLITE CATEGORY:</label>
+                        <select id="sat-category-select" class="cyber-input">
+                            <option value="starlink">Starlink</option>
+                            <option value="active">Active satellites</option>
+                            <option value="stations">Space stations</option>
+                            <option value="weather">Weather satellites</option>
+                            <option value="gps-ops">GPS satellites</option>
+                        </select>
                     </div>
-                    <button id="sat-search-btn" class="cyber-button">INITIATE TRACKING</button>
+
+                    <button id="sat-load-btn" class="cyber-button">LOAD SATELLITES</button>
+
+                    <div class="neo-input-group" style="flex-grow: 1; min-width: 220px;">
+                        <label for="sat-name-input">SEARCH BY NAME:</label>
+                        <input type="text" id="sat-name-input" class="cyber-input" placeholder="e.g. ISS, STARLINK, HUBBLE">
+                    </div>
+                    <button id="sat-name-btn" class="cyber-button outline-btn">SEARCH</button>
+
+                    <div class="neo-input-group" style="flex-grow: 1; min-width: 220px;">
+                        <label for="sat-norad-input">SEARCH BY NORAD ID:</label>
+                        <input type="text" inputmode="numeric" id="sat-norad-input" class="cyber-input" placeholder="e.g. 25544">
+                    </div>
+                    <button id="sat-norad-btn" class="cyber-button outline-btn">LOOKUP</button>
                 </div>
 
                 <div class="neo-container">
                     <!-- Loading state -->
                     <div id="sat-loading" class="neo-loading" style="display: none;">
                         <div class="scanner-line"></div>
-                        <p>QUERYING CELESTIAL DATABASE...</p>
+                        <p>FETCHING CELESTRAK ORBITAL ELEMENTS...</p>
                         <div class="cyber-progress-container"><div class="cyber-progress-bar"></div></div>
                     </div>
 
                     <!-- Error state -->
                     <div id="sat-error" class="neo-error" style="display: none;">
-                        <p class="error-text">Unable to load satellite data. Please verify search parameters.</p>
-                    </div>
-
-                    <!-- Empty state -->
-                    <div id="sat-empty" class="neo-error" style="display: none;">
-                        <p class="error-text">No satellites found for this search. Try a broader query.</p>
+                        <p class="error-text">Unable to load satellite data. Please try again later.</p>
                     </div>
 
                     <!-- Data state -->
                     <div id="sat-data" class="neo-layout" style="display: none;">
-                        <div class="neo-grid" id="sat-grid">
+                        <div class="sat-grid" id="sat-grid">
                             <!-- Sat cards injected here -->
                         </div>
                         <div id="sat-load-more" style="display: none; text-align: center; margin-top: 20px;">
@@ -460,35 +483,6 @@
                 </div>
             </div>
         </section>
-
-        <!-- TLE Detail Modal -->
-        <div id="tle-modal" class="modal-overlay" style="display: none;">
-            <div class="modal-content cyber-panel">
-                <div class="panel-header">
-                    <span class="panel-id" id="modal-sat-id">SAT.DATA // 00000</span>
-                    <button class="modal-close" id="modal-close-btn">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <h2 id="modal-sat-name">SATELLITE NAME</h2>
-                    <div class="tle-container">
-                        <div class="tle-line-header">
-                            <span>TWO-LINE ELEMENT SET (TLE)</span>
-                            <button id="copy-tle-btn" class="cyber-button"
-                                style="font-size: 0.6rem; padding: 2px 8px; margin-left: 10px;">COPY TLE</button>
-                        </div>
-                        <pre id="tle-line-1" class="tle-text">LINE 1 DATA</pre>
-                        <pre id="tle-line-2" class="tle-text">LINE 2 DATA</pre>
-                    </div>
-                    <div class="sat-fields-grid" id="modal-fields-grid">
-                        <!-- Additional fields injected here -->
-                    </div>
-                </div>
-                <div class="panel-footer-meta">
-                    <span>SECURITY_CLEARANCE: ALPHA</span>
-                    <span id="modal-timestamp">TIMESTAMP: ---</span>
-                </div>
-            </div>
-        </div>
 
 
 

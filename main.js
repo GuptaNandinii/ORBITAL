@@ -6,9 +6,9 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { fetchApod, getNearEarthObjects, getFireballEvents, getSentryVirtualImpactors, getSentryObjectDetails } from './services/nasaApi.js';
 import { getCloseApproaches } from './services/asteroidApi.js';
-import { searchSatellites, getSatelliteById } from './services/satelliteApi.js';
 import { searchSpaceExperiments, getExperimentDetails } from './services/researchApi.js';
 import { getCoronalMassEjections, getCmeAnalysis } from './services/donkiApi.js';
+import { getSatellites, getSatelliteById, getSatellitesByName, getSatcatRecordsByName } from './services/satelliteApi.js';
 const canvas = document.querySelector('canvas.webgl');
 
 // Scene
@@ -73,8 +73,7 @@ const flareMaterial = new THREE.MeshBasicMaterial({
 const solarFlare = new THREE.Mesh(flareGeometry, flareMaterial);
 scene.add(solarFlare);
 
-let isWarping = true; // Trigger hyper-drive on wake
-setTimeout(() => { isWarping = false; }, 3500); // Disengage hyper-drive after 3.5s
+let isWarping = false; // Triggered after loading screen finishes
 
 // --- GLOBAL STATE ---
 let isZenMode = false;
@@ -866,6 +865,67 @@ let mixer = null;
 let model = null;
 let animationDuration = 0;
 
+// --- LOADING SYSTEM ---
+const loadingScreen = document.getElementById('site-loading-screen');
+const loadingStatusText = document.getElementById('site-loading-status');
+const loadingPercentageText = document.getElementById('site-loading-percentage');
+const loadingBar = document.getElementById('site-loading-bar');
+
+const LOADER_MIN_TIME = 4500;
+const loaderStartTime = Date.now();
+let actualLoadComplete = false;
+let displayedPercent = 0;
+let targetPercentComplete = 0; // Filled by onProgress
+
+const updateLoadingVisuals = () => {
+    if (!loadingScreen) return; // Skip if no screen
+    
+    const elapsed = Date.now() - loaderStartTime;
+    // Approach 99% purely based on min time
+    let targetP = Math.min(99, (elapsed / LOADER_MIN_TIME) * 100);
+    
+    // Only hit 100% if actual 3D model finished downloading/parsing AND we passed the min time
+    if (actualLoadComplete && elapsed > LOADER_MIN_TIME) {
+        targetP = 100;
+    }
+    
+    // Ensure we don't go backwards, and take actual download progress into account if it's faster
+    displayedPercent = Math.max(displayedPercent, targetP, targetPercentComplete > 0 && targetPercentComplete < 100 ? targetPercentComplete : 0);
+    
+    if (loadingPercentageText) loadingPercentageText.innerText = Math.floor(displayedPercent) + '%';
+    if (loadingBar) loadingBar.style.width = displayedPercent + '%';
+    
+    if (displayedPercent < 100) {
+        requestAnimationFrame(updateLoadingVisuals);
+    } else {
+        // Complete the sequence
+        if (loadingStatusText) loadingStatusText.innerHTML = "UPLINK ESTABLISHED // SYSTEMS SYNCHRONIZED";
+        setTimeout(() => {
+            loadingScreen.style.opacity = '0';
+            loadingScreen.style.transform = 'translateY(-20px)';
+            setTimeout(() => {
+                loadingScreen.remove();
+                isModelLoaded = true;
+                
+                // Trigger the intro warp/flare sequence now!
+                isWarping = true;
+                setTimeout(() => { isWarping = false; }, 3500); 
+
+                if (window.gltfActions) {
+                    window.gltfActions.forEach(a => a.play());
+                }
+            }, 1000);
+        }, 500); // Small delay to let 100% render briefly
+    }
+};
+
+if (loadingScreen) {
+    requestAnimationFrame(updateLoadingVisuals);
+} else {
+    isModelLoaded = true;
+}
+// --- /LOADING SYSTEM ---
+
 const gltfLoader = new GLTFLoader();
 
 gltfLoader.load(
@@ -977,6 +1037,8 @@ gltfLoader.load(
         scene.add(model);
 
         // Play ALL Animations from the file (Camera, Actions, etc)
+        // Store actions so we can play them ONLY after the loading UI finishes
+        window.gltfActions = [];
         if (gltf.animations && gltf.animations.length > 0) {
             // Provide the entire gltf.scene to the mixer so it can find all child objects, including the camera
             mixer = new THREE.AnimationMixer(gltf.scene);
@@ -986,9 +1048,7 @@ gltfLoader.load(
             gltf.animations.forEach((clip) => {
                 console.log("Animation Clip:", clip.name, "Tracks:", clip.tracks.map(t => t.name));
                 const action = mixer.clipAction(clip);
-
-                // Play it so it's active in the mixer
-                action.play();
+                window.gltfActions.push(action);
 
                 // Track longest duration
                 if (clip.duration > animationDuration) {
@@ -997,16 +1057,16 @@ gltfLoader.load(
             });
         }
 
-        // Remove loading screen
-        const loading = document.querySelector('.loading-screen');
-        if (loading) {
-            loading.style.opacity = '0';
-            setTimeout(() => loading.remove(), 1000);
-        }
+        // Tell the visual loader that the 3D model is actually ready
+        actualLoadComplete = true;
+
     },
     // onProgress callback
     (xhr) => {
-        console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        if (xhr.lengthComputable) {
+            // Actual download percentage
+            targetPercentComplete = Math.round((xhr.loaded / xhr.total) * 100);
+        }
     },
     (error) => {
         console.error('Error loading glTF:', error);
@@ -1133,7 +1193,13 @@ contentBlocks.forEach(block => observer.observe(block));
 const clock = new THREE.Clock();
 let currentScrollFraction = 0;
 
+let isModelLoaded = false;
 const tick = () => {
+    window.requestAnimationFrame(tick);
+    
+    // Do not run animations until the model is fully loaded and screen is gone
+    if (!isModelLoaded) return;
+    
     // Get absolute time just for particles
     const elapsedTime = clock.getElapsedTime();
 
@@ -1516,7 +1582,6 @@ const tick = () => {
         renderer.render(scene, camera);
     }
 
-    window.requestAnimationFrame(tick);
 };
 
 tick();
@@ -2517,227 +2582,6 @@ const initFireball = () => {
 
 initFireball();
 
-// =========================================
-// TLE SATELLITE TRACKER LOGIC
-// =========================================
-const initSatelliteTracker = () => {
-    const searchInput = document.getElementById('sat-search-input');
-    const searchBtn = document.getElementById('sat-search-btn');
-    const gridEl = document.getElementById('sat-grid');
-    const loadingState = document.getElementById('sat-loading');
-    const errorState = document.getElementById('sat-error');
-    const emptyState = document.getElementById('sat-empty');
-    const dataState = document.getElementById('sat-data');
-
-    // Modal elements
-    const modal = document.getElementById('tle-modal');
-    const modalCloseBtn = document.getElementById('modal-close-btn');
-    const modalSatId = document.getElementById('modal-sat-id');
-    const modalSatName = document.getElementById('modal-sat-name');
-    const modalTle1 = document.getElementById('tle-line-1');
-    const modalTle2 = document.getElementById('tle-line-2');
-    const modalFieldsGrid = document.getElementById('modal-fields-grid');
-    const modalTimestamp = document.getElementById('modal-timestamp');
-    const copyTleBtn = document.getElementById('copy-tle-btn');
-
-    const renderSatCard = (sat) => {
-        // Basic data extraction
-        const name = sat.name || 'UNKNOWN SAT';
-        const id = sat.satelliteId || 'N/A';
-        const date = sat.date || 'N/A'; // Observation date
-        
-        // TLE parsing for some quick stats (approximation)
-        // Mean Motion and Inclination are usually in Line 2
-        let inclination = 'N/A';
-        let meanMotion = 'N/A';
-        if (sat.line2) {
-            inclination = sat.line2.substring(8, 16).trim() + '°';
-            meanMotion = sat.line2.substring(52, 63).trim() + ' rev/day';
-        }
-
-        return `
-            <div class="sat-card" data-id="${id}">
-                <h3 class="asteroid-name">${name}</h3>
-                <div class="asteroid-detail">
-                    <span class="lbl">CATALOG NO.</span>
-                    <span class="val">${id}</span>
-                </div>
-                <div class="asteroid-detail">
-                    <span class="lbl">INCLINATION</span>
-                    <span class="val">${inclination}</span>
-                </div>
-                <div class="asteroid-detail">
-                    <span class="lbl">MEAN MOTION</span>
-                    <span class="val highlight">${meanMotion}</span>
-                </div>
-                
-                <div class="badge badge-safe">
-                    ORBITAL_ID: ${id}
-                </div>
-            </div>
-        `;
-    };
-
-    const showSatDetails = async (id) => {
-        if (!id) return;
-        
-        // Clear old modal data
-        modalSatName.textContent = 'RETRIEVING...';
-        modalTle1.textContent = '...';
-        modalTle2.textContent = '...';
-        modalFieldsGrid.innerHTML = '';
-        
-        modal.style.display = 'flex';
-
-        try {
-            const data = await getSatelliteById(id);
-            
-            modalSatId.textContent = `SAT.DATA // ${data.satelliteId}`;
-            modalSatName.textContent = data.name;
-            modalTle1.textContent = data.line1;
-            modalTle2.textContent = data.line2;
-            modalTimestamp.textContent = `TIMESTAMP: ${new Date().toISOString()}`;
-            
-            // Populate grid with additional details
-            const fields = [
-                { label: 'INTL DESIGNATOR', value: data.line1.substring(9, 17).trim() },
-                { label: 'EPOCH', value: data.line1.substring(18, 32).trim() },
-                { label: 'ECCENTRICITY', value: '0.' + data.line2.substring(26, 33).trim() },
-                { label: 'ARG. OF PERIGEE', value: data.line2.substring(34, 42).trim() + '°' },
-                { label: 'MEAN ANOMALY', value: data.line2.substring(43, 51).trim() + '°' }
-            ];
-
-            modalFieldsGrid.innerHTML = fields.map(f => `
-                <div class="sat-field">
-                    <span class="lbl">${f.label}</span>
-                    <span class="val">${f.value}</span>
-                </div>
-            `).join('');
-
-        } catch (err) {
-            console.error("Failed to load sat details:", err);
-            modalSatName.textContent = 'PROTOCOL_ERROR';
-        }
-    };
-
-    const handleSearch = async () => {
-        const query = searchInput.value.trim();
-        if (!query) return;
-
-        // Reset states
-        loadingState.style.display = 'flex';
-        errorState.style.display = 'none';
-        emptyState.style.display = 'none';
-        dataState.style.display = 'none';
-
-        const progressTarget = simulateProgress(loadingState);
-
-        try {
-            const data = await searchSatellites(query);
-            
-            if (!data || !data.member || data.member.length === 0) {
-                progressTarget.finish();
-                loadingState.style.display = 'none';
-                emptyState.style.display = 'flex';
-                return;
-            }
-
-            // Limit states and pagination
-            let currentData = data.member;
-            let displayLimit = 12;
-            const loadMoreWrapper = document.getElementById('sat-load-more');
-            const loadMoreBtn = document.getElementById('sat-load-more-btn');
-            
-            const renderGrid = () => {
-                if(gridEl) {
-                    const sliced = currentData.slice(0, displayLimit);
-                    gridEl.innerHTML = sliced.map(sat => renderSatCard(sat)).join('');
-                    
-                    if (currentData.length > displayLimit) {
-                        loadMoreWrapper.style.display = 'block';
-                    } else {
-                        loadMoreWrapper.style.display = 'none';
-                    }
-                }
-            };
-
-            if (loadMoreBtn) {
-                const newBtn = loadMoreBtn.cloneNode(true);
-                loadMoreBtn.parentNode.replaceChild(newBtn, loadMoreBtn);
-                newBtn.addEventListener('click', () => {
-                   displayLimit += 12;
-                   renderGrid();
-                });
-            }
-
-            renderGrid();
-            
-            // Add click listeners to cards
-            document.querySelectorAll('.sat-card').forEach(card => {
-                card.addEventListener('click', () => {
-                    showSatDetails(card.getAttribute('data-id'));
-                });
-            });
-
-            progressTarget.finish();
-            loadingState.style.display = 'none';
-            dataState.style.display = 'flex';
-
-        } catch (err) {
-            progressTarget.reset();
-            console.error("Satellite search error:", err);
-            loadingState.style.display = 'none';
-            errorState.style.display = 'flex';
-        }
-    };
-
-    // Events
-    if (searchBtn) {
-        searchBtn.addEventListener('click', handleSearch);
-    }
-    
-    if (searchInput) {
-        searchInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleSearch();
-        });
-    }
-
-    if (modalCloseBtn) {
-        modalCloseBtn.addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-    }
-
-    if (copyTleBtn) {
-        copyTleBtn.addEventListener('click', () => {
-            const fullTle = `${modalTle1.textContent}\n${modalTle2.textContent}`;
-            navigator.clipboard.writeText(fullTle).then(() => {
-                const originalText = copyTleBtn.textContent;
-                copyTleBtn.textContent = 'COPIED!';
-                copyTleBtn.style.borderColor = '#00ffaa';
-                copyTleBtn.style.color = '#00ffaa';
-                setTimeout(() => {
-                    copyTleBtn.textContent = originalText;
-                    copyTleBtn.style.borderColor = '';
-                    copyTleBtn.style.color = '';
-                }, 2000);
-            });
-        });
-    }
-
-    // Close modal on click outside
-    window.addEventListener('click', (e) => {
-        if (e.target === modal) {
-            modal.style.display = 'none';
-        }
-    });
-}
-
-initSatelliteTracker();
-
-// ==========================================
-// TLE (ORBITAL ELEMENTS) DATABASE LOGIC
-// ==========================================
 // ==========================================
 // NASA DONKI SPACE WEATHER (CME) LOGIC
 // ==========================================
@@ -3356,9 +3200,224 @@ const initResearchExplorer = () => {
         if (e.target === modal) modal.style.display = 'none';
     });
 };
+
+// =========================================
+// SATELLITE EXPLORER (CelesTrak)
+// =========================================
+const initSatelliteExplorer = () => {
+    const categorySelect = document.getElementById('sat-category-select');
+    const loadBtn = document.getElementById('sat-load-btn');
+    const nameInput = document.getElementById('sat-name-input');
+    const nameBtn = document.getElementById('sat-name-btn');
+    const noradInput = document.getElementById('sat-norad-input');
+    const noradBtn = document.getElementById('sat-norad-btn');
+
+    const loadingState = document.getElementById('sat-loading');
+    const errorState = document.getElementById('sat-error');
+    const dataState = document.getElementById('sat-data');
+    const gridEl = document.getElementById('sat-grid');
+    const loadMoreWrap = document.getElementById('sat-load-more');
+    const loadMoreBtn = document.getElementById('sat-load-more-btn');
+
+    const PAGE_SIZE = 30;
+    let currentSatellites = [];
+    let visibleCount = 0;
+
+    const getField = (obj, ...keys) => {
+        for (const k of keys) {
+            if (obj && obj[k] !== undefined && obj[k] !== null) return obj[k];
+        }
+        return undefined;
+    };
+
+    const formatNumber = (val, digits = 2) => {
+        const n = Number(val);
+        if (!Number.isFinite(n)) return '—';
+        return n.toFixed(digits);
+    };
+
+    const isSatcatRecord = (obj) => obj && typeof obj === 'object' && 'OBJECT_ID' in obj && 'NORAD_CAT_ID' in obj;
+
+    const renderCard = (sat) => {
+        const name = getField(sat, 'OBJECT_NAME', 'object_name', 'name') || 'UNKNOWN';
+        const norad = getField(sat, 'NORAD_CAT_ID', 'norad_cat_id', 'noradId', 'NORAD_ID');
+
+        const inc = getField(sat, 'INCLINATION', 'inclination');
+        const ecc = getField(sat, 'ECCENTRICITY', 'eccentricity');
+        let mm = getField(sat, 'MEAN_MOTION', 'mean_motion', 'meanMotion');
+
+        // SATCAT doesn't provide mean motion directly, but it may provide PERIOD (minutes)
+        if (mm === undefined && isSatcatRecord(sat)) {
+            const periodMin = Number(getField(sat, 'PERIOD', 'period'));
+            if (Number.isFinite(periodMin) && periodMin > 0) {
+                mm = 1440 / periodMin;
+            }
+        }
+
+        const isCatalogOnly = isSatcatRecord(sat) && getField(sat, 'ECCENTRICITY', 'eccentricity', 'MEAN_MOTION', 'mean_motion') === undefined;
+
+        return `
+            <div class="sat-card">
+                <h3 class="sat-name">${name}</h3>
+
+                <div class="sat-detail">
+                    <span class="lbl">NORAD ID</span>
+                    <span class="val">${norad ?? '—'}</span>
+                </div>
+                <div class="sat-detail">
+                    <span class="lbl">INCLINATION</span>
+                    <span class="val">${formatNumber(inc, 2)}°</span>
+                </div>
+                <div class="sat-detail">
+                    <span class="lbl">ECCENTRICITY</span>
+                    <span class="val">${formatNumber(ecc, 6)}</span>
+                </div>
+                <div class="sat-detail">
+                    <span class="lbl">MEAN MOTION</span>
+                    <span class="val">${formatNumber(mm, 2)} rev/day</span>
+                </div>
+
+                ${isCatalogOnly ? `
+                    <div class="badge" style="margin-top:12px; border-color:#facc15; color:#facc15; background:rgba(250,204,21,0.08);">
+                        CATALOG ONLY (NO GP ELEMENTS AVAILABLE)
+                    </div>
+                ` : ``}
+            </div>
+        `;
+    };
+
+    const showLoading = () => {
+        if (loadingState) loadingState.style.display = 'flex';
+        if (errorState) errorState.style.display = 'none';
+        if (dataState) dataState.style.display = 'none';
+    };
+
+    const showError = () => {
+        if (loadingState) loadingState.style.display = 'none';
+        if (errorState) errorState.style.display = 'flex';
+        if (dataState) dataState.style.display = 'none';
+    };
+
+    const showData = () => {
+        if (loadingState) loadingState.style.display = 'none';
+        if (errorState) errorState.style.display = 'none';
+        if (dataState) dataState.style.display = 'block';
+    };
+
+    const renderPage = () => {
+        if (!gridEl) return;
+
+        if (!currentSatellites || currentSatellites.length === 0) {
+            gridEl.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align:center; font-family:monospace; color:#facc15; padding:20px; border:1px dashed rgba(250,204,21,0.5); background:rgba(250,204,21,0.05);">
+                    No satellites found.
+                </div>
+            `;
+            if (loadMoreWrap) loadMoreWrap.style.display = 'none';
+            return;
+        }
+
+        const slice = currentSatellites.slice(0, visibleCount);
+        gridEl.innerHTML = slice.map(renderCard).join('');
+
+        const hasMore = currentSatellites.length > visibleCount;
+        if (loadMoreWrap) loadMoreWrap.style.display = hasMore ? 'block' : 'none';
+    };
+
+    const loadGroup = async () => {
+        const group = categorySelect ? categorySelect.value : 'active';
+        showLoading();
+        const progressTarget = simulateProgress(loadingState);
+
+        try {
+            const data = await getSatellites(group);
+            currentSatellites = Array.isArray(data) ? data : [];
+            visibleCount = Math.min(PAGE_SIZE, currentSatellites.length);
+            renderPage();
+            progressTarget.finish();
+            showData();
+        } catch (err) {
+            progressTarget.reset();
+            console.error("Satellite group fetch error:", err);
+            showError();
+        }
+    };
+
+    const lookupNorad = async () => {
+        const raw = (noradInput ? noradInput.value : '').trim();
+        const noradId = raw.replace(/[^\d]/g, '');
+        if (!noradId) return;
+
+        showLoading();
+        const progressTarget = simulateProgress(loadingState);
+
+        try {
+            const sat = await getSatelliteById(noradId);
+            currentSatellites = sat ? [sat] : [];
+            visibleCount = currentSatellites.length;
+            renderPage();
+            progressTarget.finish();
+            showData();
+        } catch (err) {
+            progressTarget.reset();
+            console.error("Satellite NORAD lookup error:", err);
+            showError();
+        }
+    };
+
+    const searchByName = async () => {
+        const raw = (nameInput ? nameInput.value : '').trim();
+        if (!raw) return;
+
+        showLoading();
+        const progressTarget = simulateProgress(loadingState);
+
+        try {
+            const gpData = await getSatellitesByName(raw);
+            const gpArr = Array.isArray(gpData) ? gpData : [];
+
+            if (gpArr.length > 0) {
+                currentSatellites = gpArr;
+            } else {
+                const satcatData = await getSatcatRecordsByName(raw);
+                currentSatellites = Array.isArray(satcatData) ? satcatData : [];
+            }
+
+            visibleCount = Math.min(PAGE_SIZE, currentSatellites.length);
+            renderPage();
+            progressTarget.finish();
+            showData();
+        } catch (err) {
+            progressTarget.reset();
+            console.error("Satellite name search error:", err);
+            showError();
+        }
+    };
+
+    if (loadBtn) loadBtn.addEventListener('click', loadGroup);
+    if (nameBtn) nameBtn.addEventListener('click', searchByName);
+    if (nameInput) {
+        nameInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') searchByName();
+        });
+    }
+    if (noradBtn) noradBtn.addEventListener('click', lookupNorad);
+    if (noradInput) {
+        noradInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') lookupNorad();
+        });
+    }
+    if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => {
+            visibleCount = Math.min(currentSatellites.length, visibleCount + PAGE_SIZE);
+            renderPage();
+        });
+    }
+};
 initResearchExplorer();
 initSentryMonitor();
 initDonkiTracker();
+initSatelliteExplorer();
 
 // =========================================
 // SCROLL SPY FOR HUD SIDEBAR NAVIGATION

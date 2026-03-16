@@ -365,25 +365,80 @@ p {
 .section.full-screen-panel {
     padding: 2rem 2.5%;
 }
-.loading-screen {
+
+/* =========================================
+   SITE LOADING SCREEN
+========================================= */
+.site-loading-screen {
     position: fixed;
     top: 0;
     left: 0;
     width: 100vw;
     height: 100vh;
-    background: var(--bg-color);
+    background: radial-gradient(circle at top, #0b1020 0%, #020208 55%, #000000 100%);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 9999;
-    transition: opacity 1s ease;
+    z-index: 10005; /* Above everything including CRT flicker */
+    transition: opacity 0.9s ease, transform 0.9s ease;
+    transform: translateY(0);
+}
+
+.loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 24px;
+}
+
+.site-loading-screen .loading-glitch {
+    font-size: 3.2rem;
+    margin-bottom: 0;
+    letter-spacing: 0.4rem;
+    opacity: 0;
+    transform: translateY(10px);
+    animation: loadingTitleIn 1s ease-out forwards;
+}
+
+.loading-bar-container {
+    width: 320px;
+    height: 5px;
+    background: rgba(0, 255, 249, 0.06);
+    border: 1px solid rgba(0, 255, 249, 0.4);
+    position: relative;
+    overflow: hidden;
+}
+
+.loading-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 0%;
+    background: #00fff9;
+    box-shadow: 0 0 12px #00fff9;
+    transition: width 0.18s ease-out;
+}
+
+.loading-status {
+    font-family: monospace;
+    color: #9ca3ff;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    opacity: 0.85;
 }
 
 .loading-text {
-    font-size: 2rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: 2px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: rgba(148, 163, 184, 0.9);
+    letter-spacing: 0.3rem;
+    text-transform: uppercase;
+}
+
+@keyframes loadingTitleIn {
+    0% { opacity: 0; transform: translateY(16px) scale(0.97); filter: blur(6px); }
+    100% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
 }
 
 /* =========================================
@@ -411,7 +466,7 @@ p {
 }
 
 .glitch-title {
-    font-size: 8rem;
+    font-size: clamp(4rem, 9vw, 7rem);
     font-weight: 800;
     color: #fff;
     letter-spacing: 0.5rem;
@@ -420,7 +475,7 @@ p {
     background: none;
     -webkit-text-fill-color: #fff;
     margin-bottom: 0;
-    animation: entranceDrop 2s cubic-bezier(0.19, 1, 0.22, 1) forwards;
+    animation: entranceDrop 1.6s cubic-bezier(0.19, 1, 0.22, 1) forwards;
 }
 
 .subtitle {
@@ -430,7 +485,7 @@ p {
     text-transform: uppercase;
     font-weight: 600;
     opacity: 0;
-    animation: fadeInSlideUp 1s ease 1.5s forwards;
+    animation: fadeInSlideUp 1s ease 1.1s forwards;
 }
 
 /* Glitch pseudo elements */
@@ -1621,6 +1676,50 @@ body.zen-mode .zen-exit-hint.show-hint {
     justify-content: center;
 }
 
+.sat-grid {
+    display: grid;
+    gap: 1.5rem;
+    padding: 2rem 0;
+    width: 100%;
+}
+
+/* Satellite Explorer grid: 3 / 2 / 1 columns */
+@media (min-width: 1024px) {
+    .sat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 640px) and (max-width: 1023.98px) {
+    .sat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 639.98px) {
+    .sat-grid { grid-template-columns: 1fr; }
+}
+
+.sat-card {
+    cursor: default;
+}
+
+.sat-name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #fff;
+    margin: 0 0 1rem 0;
+    font-family: monospace;
+    border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+    padding-bottom: 0.5rem;
+}
+
+.sat-detail {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+    font-family: monospace;
+    font-size: 0.85rem;
+    margin-bottom: 0.4rem;
+}
+
+.sat-detail .lbl { color: #888; }
+.sat-detail .val { color: #e0e0e0; }
+
 .asteroid-card, .fireball-card {
     background: rgba(0, 0, 0, 0.6);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1666,7 +1765,7 @@ body.zen-mode .zen-exit-hint.show-hint {
     padding: 1.5rem;
     transition: 0.3s;
     overflow: hidden;
-    cursor: pointer;
+    cursor: default;
 }
 
 .sat-card::before {

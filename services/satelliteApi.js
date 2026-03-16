@@ -1,134 +1,44 @@
-// =========================================
-// TLE SATELLITE API SERVICE
-// Base API: http://tle.ivanstanojevic.me/api/tle
-// =========================================
+async function fetchCelestrakJson(url, errorMessage) {
+  const response = await fetch(url);
 
-const BASE_URL = 'https://tle.ivanstanojevic.me/api/tle';
-const PROXY_URL = 'https://corsproxy.io/?';
+  if (!response.ok) {
+    throw new Error(errorMessage);
+  }
 
-/**
- * Searches for satellites by name using the TLE API.
- * Uses session storage for caching to avoid redundant requests.
- * @param {string} query - The name or partial name of the satellite (e.g., 'ISS')
- * @returns {Promise<Object>} The API response containing the 'member' array of satellite objects.
- */
-export async function searchSatellites(query) {
-    if (!query) return null;
-    
-    // Normalize query for cache key
-    const normalizedQuery = query.trim().toLowerCase();
-    const CACHE_KEY = `sat_search_${normalizedQuery}`;
-    
-    // Check cache
-    const cachedData = sessionStorage.getItem(CACHE_KEY);
-    if (cachedData) {
-        try {
-            return JSON.parse(cachedData);
-        } catch (e) {
-            console.error("Error parsing cached satellite search data", e);
-        }
-    }
+  // CelesTrak sometimes returns plain-text (e.g. "No GP data found")
+  const text = await response.text();
+  const trimmed = text.trim();
 
-    const targetUrl = `${BASE_URL}?search=${encodeURIComponent(query)}`;
-    
-    const proxies = [
-        url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-        url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-        url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-        url => `https://thingproxy.freeboard.io/fetch/${url}`
-    ];
-    
-    let lastError = new Error("Failed to fetch satellite search");
+  if (trimmed === "" || trimmed === "No GP data found") {
+    return [];
+  }
 
-    for (const getProxyUrl of proxies) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-            const response = await fetch(getProxyUrl(targetUrl), { signal: controller.signal });
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-                lastError = new Error(`HTTP error! status: ${response.status}`);
-                continue;
-            }
-            
-            const data = await response.json();
-            
-            // Validate expected structure
-            if (!data || !data.member) {
-                lastError = new Error("Invalid payload structure received from proxy.");
-                continue;
-            }
-            
-            // Cache the successful response for the session
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
-            return data;
-        } catch (error) {
-            console.warn(`Satellite Proxy Failed: ${getProxyUrl(targetUrl)}`, error);
-            lastError = error;
-        }
-    }
-
-    console.error(`Failed to search satellites for "${query}":`, lastError);
-    throw lastError;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // If upstream returns HTML or other non-JSON, surface a clean error
+    throw new Error(errorMessage);
+  }
 }
 
-/**
- * Fetches a specific satellite's precise TLE data by ID.
- * @param {number|string} id - The satellite catalog number.
- * @returns {Promise<Object>} The specific satellite data object.
- */
-export async function getSatelliteById(id) {
-    if (!id) return null;
-    
-    const CACHE_KEY = `sat_id_${id}`;
-    
-    // Check cache
-    const cachedData = sessionStorage.getItem(CACHE_KEY);
-    if (cachedData) {
-        try {
-            return JSON.parse(cachedData);
-        } catch (e) {
-            console.error("Error parsing cached satellite ID data", e);
-        }
-    }
-
-    const targetUrl = `${BASE_URL}/${id}`;
-    
-    const proxies = [
-        url => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-        url => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`,
-        url => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-        url => `https://thingproxy.freeboard.io/fetch/${url}`
-    ];
-    
-    let lastError = new Error("Failed to fetch satellite by ID");
-
-    for (const getProxyUrl of proxies) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-            const response = await fetch(getProxyUrl(targetUrl), { signal: controller.signal });
-            clearTimeout(timeoutId);
-            
-            if (!response.ok) {
-                lastError = new Error(`HTTP error! status: ${response.status}`);
-                continue;
-            }
-            
-            const data = await response.json();
-            
-            // Cache the successful response
-            sessionStorage.setItem(CACHE_KEY, JSON.stringify(data));
-            return data;
-        } catch (error) {
-            console.warn(`Satellite Proxy Failed for ID ${id}: ${getProxyUrl(targetUrl)}`, error);
-            lastError = error;
-        }
-    }
-
-    console.error(`Failed to fetch satellite ID "${id}":`, lastError);
-    throw lastError;
+export async function getSatellites(group) {
+  const url = `https://celestrak.org/NORAD/elements/gp.php?GROUP=${group}&FORMAT=json`;
+  return await fetchCelestrakJson(url, "Failed to fetch satellites");
 }
+
+export async function getSatelliteById(noradId) {
+  const url = `https://celestrak.org/NORAD/elements/gp.php?CATNR=${noradId}&FORMAT=json`;
+  const data = await fetchCelestrakJson(url, "Failed to fetch satellite");
+  return data[0];
+}
+
+export async function getSatellitesByName(name) {
+  const url = `https://celestrak.org/NORAD/elements/gp.php?NAME=${encodeURIComponent(name)}&FORMAT=json`;
+  return await fetchCelestrakJson(url, "Failed to fetch satellites");
+}
+
+export async function getSatcatRecordsByName(name) {
+  const url = `https://celestrak.org/satcat/records.php?NAME=${encodeURIComponent(name)}&FORMAT=json`;
+  return await fetchCelestrakJson(url, "Failed to fetch satellites");
+}
+
