@@ -128,6 +128,8 @@ for (let i = 0; i < nebulaCount; i++) {
     nebulaGroup.add(nebula);
 }
 scene.add(nebulaGroup);
+// Disable nebula planes (removes blue/purple corner haze)
+nebulaGroup.visible = false;
 
 // --- PROCEDURAL SATELLITE ---
 const createSatellite = () => {
@@ -1139,6 +1141,12 @@ const introOverlay = document.querySelector('.intro-overlay');
 window.addEventListener('scroll', () => {
     scrollY = window.scrollY;
 
+    // In Zen mode, keep things calm: no white flash / transition
+    if (isZenMode) {
+        if (whiteTransition) whiteTransition.style.opacity = '0';
+        return;
+    }
+
     // We only want to animate the 3D model while we are scrolling through the animation track.
     // The animation track acts as our 'timeline' duration.
     const trackHeight = animationTrack.offsetHeight - window.innerHeight;
@@ -1591,6 +1599,7 @@ const zenModeBtn = document.getElementById('zen-mode-btn');
 const dreamModeBtn = document.getElementById('dream-mode-btn');
 const zenQuote = document.getElementById('zen-quote');
 const zenExitHint = document.getElementById('zen-exit-hint');
+const zenEnterBtn = document.getElementById('zen-enter-btn');
 
 const cycleZenQuotes = () => {
     if (!isZenMode || !isDreamMode) return;
@@ -1646,6 +1655,11 @@ const toggleZenMode = () => {
     
     if (isZenMode) {
         document.body.classList.add('zen-mode');
+        // Lock scroll in Zen mode (both html + body for cross-browser consistency)
+        document.documentElement.dataset.prevOverflow = document.documentElement.style.overflow || '';
+        document.body.dataset.prevOverflow = document.body.style.overflow || '';
+        document.documentElement.style.overflow = 'hidden';
+        document.body.style.overflow = 'hidden';
         
         // Disable Sci-Fi 3D Elements
         holoGroup.visible = false;
@@ -1703,6 +1717,13 @@ const toggleZenMode = () => {
         
     } else {
         document.body.classList.remove('zen-mode');
+        // Restore scroll
+        const prevHtml = document.documentElement.dataset.prevOverflow ?? '';
+        const prevBody = document.body.dataset.prevOverflow ?? '';
+        document.documentElement.style.overflow = prevHtml;
+        document.body.style.overflow = prevBody;
+        delete document.documentElement.dataset.prevOverflow;
+        delete document.body.dataset.prevOverflow;
         zenQuote.classList.remove('show-quote');
         zenExitHint.classList.remove('show-hint');
         clearInterval(quoteInterval);
@@ -1740,6 +1761,13 @@ const toggleZenMode = () => {
 
 if (zenModeBtn) {
     zenModeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        toggleZenMode();
+    });
+}
+
+if (zenEnterBtn) {
+    zenEnterBtn.addEventListener('click', (e) => {
         e.preventDefault();
         toggleZenMode();
     });

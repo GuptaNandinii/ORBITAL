@@ -72,6 +72,10 @@
     <div class="intro-overlay">
         <h1 class="glitch-title" data-text="O R B I T A L">O R B I T A L</h1>
         <p class="subtitle">PROJECTING COSMIC TELEMETRY</p>
+        <div class="scroll-hint">
+            <span class="scroll-label">SCROLL TO ENTER MISSION</span>
+            <span class="scroll-arrow"></span>
+        </div>
     </div>
 
     <canvas class="webgl"></canvas>
@@ -738,6 +742,28 @@
                             <button id="osdr-load-more" class="cyber-button" style="display: none;">LOAD MORE RECORDS</button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Boundary -->
+        <div class="sector-boundary">
+            <div class="boundary-line"></div>
+            <div class="boundary-label">SECTOR: ZEN_PROTOCOL</div>
+        </div>
+
+        <section id="zen-hint-section" class="section dashboard-section">
+            <div class="content cyber-panel dashboard-panel zen-hint-panel">
+                <div class="panel-header">
+                    <span class="panel-id">SYS.SEC-10 // ZEN.MODE</span>
+                    <span class="panel-status">OPTIONAL</span>
+                </div>
+                <h2>Zen Mode</h2>
+                <p>A quiet Earth view for a calmer, distraction-free experience.</p>
+
+                <div class="zen-hint-actions">
+                    <button id="zen-enter-btn" class="cyber-button">ENTER ZEN MODE</button>
+                    <div class="zen-hint-note">You can also activate <span class="zen-badge">ZEN.10</span> from the navigation.</div>
                 </div>
             </div>
         </section>
